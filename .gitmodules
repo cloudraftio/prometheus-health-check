@@ -1,0 +1,4 @@
+[submodule "prom/docs"]
+	path = prom/docs
+	url = https://github.com/prometheus/docs.git
+	branch = main
