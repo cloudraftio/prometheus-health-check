@@ -1,0 +1,225 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CloudRaft Prometheus Health Check Report</title>
+    <style>
+        :root {
+            --primary-color: #1a73e8;
+            --secondary-color: #f1f3f4;
+            --font-color: #202124;
+            --border-color: #dadce0;
+            --critical-color: #d93025;
+            --high-color: #f9ab00;
+            --medium-color: #f29900;
+            --low-color: #1e8e3e;
+        }
+        body {
+            font-family: 'Google Sans', sans-serif;
+            margin: 0;
+            background-color: #f8f9fa;
+            color: var(--font-color);
+        }
+        .header {
+            background-color: var(--primary-color);
+            color: white;
+            padding: 20px;
+            text-align: center;
+            font-size: 24px;
+        }
+        .container {
+            max-width: 1200px;
+            margin: 20px auto;
+            padding: 20px;
+            background-color: white;
+            border-radius: 8px;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.12), 0 1px 2px rgba(0,0,0,0.24);
+        }
+        .score-circle {
+            width: 150px;
+            height: 150px;
+            border-radius: 50%;
+            margin: 20px auto;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            font-size: 48px;
+            font-weight: bold;
+        }
+        .score-production-grade { background-color: #e6f4ea; color: #1e8e3e; }
+        .score-needs-tuning { background-color: #fff8e1; color: #f9ab00; }
+        .score-high-risk { background-color: #fce8e6; color: #d93025; }
+
+        h2 {
+            border-bottom: 2px solid var(--primary-color);
+            padding-bottom: 10px;
+            margin-top: 40px;
+        }
+        h3 {
+            margin-top: 30px;
+        }
+        .recommendation {
+            border-left: 5px solid;
+            padding: 15px;
+            margin-bottom: 15px;
+            background-color: var(--secondary-color);
+        }
+        .recommendation.critical { border-color: var(--critical-color); }
+        .recommendation.high { border-color: var(--high-color); }
+        .recommendation.medium { border-color: var(--medium-color); }
+        .recommendation.low { border-color: var(--low-color); }
+        .recommendation h3 { margin-top: 0; }
+
+        pre {
+            background-color: #f1f3f4;
+            padding: 15px;
+            border-radius: 5px;
+            overflow-x: auto;
+            white-space: pre-wrap;
+            word-wrap: break-word;
+        }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 20px;
+        }
+        th, td {
+            border: 1px solid var(--border-color);
+            padding: 12px;
+            text-align: left;
+        }
+        th {
+            background-color: var(--secondary-color);
+            font-weight: 500;
+        }
+        .footer {
+            text-align: center;
+            margin-top: 40px;
+            padding-top: 20px;
+            border-top: 1px solid var(--border-color);
+            font-size: 14px;
+        }
+    </style>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Google+Sans:wght@400;500;700&display=swap" rel="stylesheet">
+</head>
+<body>
+    <div class="header">
+        CloudRaft Prometheus Health Check Report
+    </div>
+    <div class="container">
+        <h1>Overall Health Score</h1>
+        <div class="score-circle {{ report.score_category_class }}">
+            {{ "%.0f"|format(report.score) }}
+        </div>
+        <p style="text-align: center; font-size: 24px; font-weight: 500;">{{ report.score_category }}</p>
+
+        <h2>Prometheus Version</h2>
+        <p><strong>Version:</strong> {{ report.prometheus_build_info.version }}</p>
+        <p><strong>Revision:</strong> {{ report.prometheus_build_info.revision }}</p>
+        <p><strong>Branch:</strong> {{ report.prometheus_build_info.branch }}</p>
+        <p><strong>Build Date:</strong> {{ report.prometheus_build_info.buildDate }}</p>
+        <p><strong>Go Version:</strong> {{ report.prometheus_build_info.goVersion }}</p>
+
+        <h2>Recommendations</h2>
+        {% for rec in report.recommendations %}
+        <div class="recommendation {{ rec.severity }}">
+            <h3>{{ rec.category }}: {{ rec.internal_cause }} ({{ rec.severity|capitalize }})</h3>
+            <p><strong>Impact:</strong> {{ rec.impact }}</p>
+            <p><strong>Recommendation:</strong> {{ rec.recommendation }}</p>
+            <p><strong>Reference:</strong> <a href="{{ rec.reference }}" target="_blank">{{ rec.reference }}</a></p>
+        </div>
+        {% else %}
+        <p>No recommendations found. Your Prometheus setup looks healthy!</p>
+        {% endfor %}
+
+        <h2>Prometheus Configuration</h2>
+        <pre><code>{{ report.prometheus_config.yaml }}</code></pre>
+
+        <h2>Prometheus Flags</h2>
+        <pre><code>{{ report.prometheus_flags.flags | tojson(indent=2) }}</code></pre>
+
+        <h2>TSDB Status</h2>
+        <h3>Head Stats</h3>
+        <ul>
+            <li><strong>Number of Series:</strong> {{ report.tsdb_status.headStats.numSeries | human_readable_number }}</li>
+            <li><strong>Number of Chunks:</strong> {{ report.tsdb_status.headStats.chunkCount | human_readable_number }}</li>
+            <li><strong>Min Time:</strong> {{ report.tsdb_status.headStats.minTime | timestamp_to_datetime }}</li>
+            <li><strong>Max Time:</strong> {{ report.tsdb_status.headStats.maxTime | timestamp_to_datetime }}</li>
+        </ul>
+
+        <h2>Performance</h2>
+        <ul>
+            <li><strong>Series Churn Rate (per second):</strong> {{ "%.2f"|format(report.series_churn_rate) if report.series_churn_rate is not none else "N/A" }}</li>
+            <li><strong>GC Pause Time (p99, seconds):</strong> {{ "%.4f"|format(report.gc_pause_time_p99) if report.gc_pause_time_p99 is not none else "N/A" }}</li>
+            <li><strong>Failed Compactions:</strong> {{ report.failed_compactions if report.failed_compactions is not none else "N/A" }}</li>
+        </ul>
+
+        <h3>Top 10 Labels by Unique Values</h3>
+        <table>
+            <tr>
+                <th>Label Name</th>
+                <th>Value Count</th>
+            </tr>
+            {% for item in report.tsdb_status.labelValueCountByLabelName[:10] %}
+            <tr>
+                <td>{{ item.name }}</td>
+                <td>{{ item.value | human_readable_number }}</td>
+            </tr>
+            {% endfor %}
+        </table>
+
+        <h3>Top 10 Labels by Memory Usage (bytes)</h3>
+        <table>
+            <tr>
+                <th>Label Name</th>
+                <th>Memory (bytes)</th>
+            </tr>
+            {% for item in report.tsdb_status.memoryInBytesByLabelName[:10] %}
+            <tr>
+                <td>{{ item.name }}</td>
+                <td>{{ item.value | human_readable_bytes }}</td>
+            </tr>
+            {% endfor %}
+        </table>
+
+        <h3>Top 10 Metrics by Series Count</h3>
+        <table>
+            <tr>
+                <th>Metric Name</th>
+                <th>Series Count</th>
+            </tr>
+            {% for item in report.tsdb_status.seriesCountByMetricName[:10] %}
+            <tr>
+                <td>{{ item.name }}</td>
+                <td>{{ item.value | human_readable_number }}</td>
+            </tr>
+            {% endfor %}
+        </table>
+
+        <h2>Query Performance</h2>
+        <ul>
+            <li><strong>p99 Query Duration (seconds):</strong>
+                {% if report.query_duration_p99 is not none %}
+                    {{ "%.3f"|format(report.query_duration_p99) }}
+                {% else %}
+                    N/A
+                {% endif %}
+            </li>
+            <li><strong>Average Query Duration (seconds):</strong>
+                {% if report.query_duration_avg is not none %}
+                    {{ "%.3f"|format(report.query_duration_avg) }}
+                {% else %}
+                    N/A
+                {% endif %}
+            </li>
+        </ul>
+
+    </div>
+    <div class="footer">
+        CloudRaft's Prometheus support is available at <a href="https://www.cloudraft.io/prometheus-consulting" target="_blank">cloudraft.io</a>
+    </div>
+</body>
+</html>

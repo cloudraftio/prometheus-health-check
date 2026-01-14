@@ -1,0 +1,8 @@
+httpx
+ruamel.yaml
+jinja2
+plotly
+typer[all]
+pydantic
+rich
+tabulate
