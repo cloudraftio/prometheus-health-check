@@ -153,7 +153,7 @@
         <h2>Performance</h2>
         <ul>
             <li><strong>Series Churn Rate (per second):</strong> {{ "%.2f"|format(report.series_churn_rate) if report.series_churn_rate is not none else "N/A" }}</li>
-            <li><strong>GC Pause Time (p99, seconds):</strong> {{ "%.4f"|format(report.gc_pause_time_p99) if report.gc_pause_time_p99 is not none else "N/A" }}</li>
+            <li><strong>Maximum Reported GC Pause (seconds):</strong> {{ "%.4f"|format(report.gc_pause_time_max) if report.gc_pause_time_max is not none else "N/A" }}</li>
             <li><strong>Failed Compactions:</strong> {{ report.failed_compactions if report.failed_compactions is not none else "N/A" }}</li>
         </ul>
 
@@ -201,14 +201,14 @@
 
         <h2>Query Performance</h2>
         <ul>
-            <li><strong>p99 Query Duration (seconds):</strong>
+            <li><strong>p99 Query Evaluation Duration (seconds):</strong>
                 {% if report.query_duration_p99 is not none %}
                     {{ "%.3f"|format(report.query_duration_p99) }}
                 {% else %}
                     N/A
                 {% endif %}
             </li>
-            <li><strong>Average Query Duration (seconds):</strong>
+            <li><strong>Average Query Evaluation Duration (seconds):</strong>
                 {% if report.query_duration_avg is not none %}
                     {{ "%.3f"|format(report.query_duration_avg) }}
                 {% else %}

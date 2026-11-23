@@ -20,8 +20,24 @@ class PrometheusAPICollector:
             prom_url: The URL of the Prometheus server.
             client: An optional httpx.Client to use for requests.
         """
-        self.prom_url = prom_url
+        self.prom_url = prom_url.rstrip("/")
         self.client = client or httpx.Client()
+
+    def _get_data(self, endpoint: str, **kwargs) -> dict:
+        try:
+            response = self.client.get(f"{self.prom_url}/api/v1/{endpoint}", **kwargs)
+            response.raise_for_status()
+        except httpx.HTTPStatusError as exc:
+            raise ValueError(f"/api/v1/{endpoint} returned HTTP {exc.response.status_code}") from exc
+        except httpx.RequestError as exc:
+            raise ValueError(f"/api/v1/{endpoint} request failed ({type(exc).__name__}): {exc}") from exc
+        try:
+            payload = response.json()
+        except ValueError as exc:
+            raise ValueError(f"/api/v1/{endpoint} did not return JSON") from exc
+        if not isinstance(payload, dict) or payload.get("status") != "success" or not isinstance(payload.get("data"), dict):
+            raise ValueError(f"/api/v1/{endpoint} did not return a successful Prometheus API response")
+        return payload["data"]
 
     def get_config(self) -> PrometheusConfig:
         """
@@ -30,10 +46,7 @@ class PrometheusAPICollector:
         Returns:
             A PrometheusConfig object.
         """
-        response = self.client.get(f"{self.prom_url}/api/v1/status/config")
-        response.raise_for_status()
-        config_data = response.json()
-        return PrometheusConfig(yaml=config_data["data"]["yaml"])
+        return PrometheusConfig(yaml=self._get_data("status/config")["yaml"])
 
     def get_flags(self) -> PrometheusFlags:
         """
@@ -42,9 +55,7 @@ class PrometheusAPICollector:
         Returns:
             A PrometheusFlags object.
         """
-        response = self.client.get(f"{self.prom_url}/api/v1/status/flags")
-        response.raise_for_status()
-        return PrometheusFlags(flags=response.json()["data"])
+        return PrometheusFlags(flags=self._get_data("status/flags"))
 
     def get_tsdb_status(self) -> TsdbStatus:
         """
@@ -53,9 +64,11 @@ class PrometheusAPICollector:
         Returns:
             A TsdbStatus object.
         """
-        response = self.client.get(f"{self.prom_url}/api/v1/status/tsdb")
-        response.raise_for_status()
-        return TsdbStatus(**response.json()["data"])
+        status = TsdbStatus(**self._get_data("status/tsdb"))
+        head = status.headStats
+        if head["minTime"] > head["maxTime"]:
+            head.update(minTime=None, maxTime=None)
+        return status
         
     def get_buildinfo(self) -> PrometheusBuildInfo:
         """
@@ -64,10 +77,10 @@ class PrometheusAPICollector:
         Returns:
             A PrometheusBuildInfo object.
         """
-        response = self.client.get(f"{self.prom_url}/api/v1/status/buildinfo")
-        response.raise_for_status()
-        buildinfo_data = response.json()
-        return PrometheusBuildInfo(**buildinfo_data["data"])
+        return PrometheusBuildInfo(**self._get_data("status/buildinfo"))
+
+    def get_rule_groups(self) -> list[dict]:
+        return self._get_data("rules", params={"exclude_alerts": "true"})["groups"]
 
     def query(self, query: str) -> Dict[str, Any]:
         """
@@ -79,6 +92,4 @@ class PrometheusAPICollector:
         Returns:
             A dictionary representing the query result.
         """
-        response = self.client.get(f"{self.prom_url}/api/v1/query", params={"query": query})
-        response.raise_for_status()
-        return response.json()["data"]
+        return self._get_data("query", params={"query": query})

@@ -37,7 +37,7 @@ class TestAnalyzers(unittest.TestCase):
     def test_config_analyzer(self):
         # Test with low scrape interval
         config = PrometheusConfig(
-            yaml={"global": {"scrape_interval": "5s"}}
+            yaml="global: {scrape_interval: 5s}"
         )
         analyzer = ConfigAnalyzer(config)
         recommendations = analyzer.analyze()
@@ -46,11 +46,17 @@ class TestAnalyzers(unittest.TestCase):
 
         # Test with normal scrape interval
         config = PrometheusConfig(
-            yaml={"global": {"scrape_interval": "15s"}}
+            yaml="global: {scrape_interval: 15s}"
         )
         analyzer = ConfigAnalyzer(config)
         recommendations = analyzer.analyze()
         self.assertEqual(len(recommendations), 0)
+
+    def test_prometheus_duration_units(self):
+        for interval, expected in [("500ms", 1), ("14s999ms", 1), ("15s1ms", 0), ("1m30s", 0), ("1h", 0)]:
+            with self.subTest(interval=interval):
+                config = PrometheusConfig(yaml=f"global: {{scrape_interval: {interval}}}")
+                self.assertEqual(len(ConfigAnalyzer(config).analyze()), expected)
 
 if __name__ == "__main__":
     unittest.main()

@@ -16,6 +16,22 @@ class MetricsAnalyzer:
         """
         self.collector = collector
 
+    def _query_evaluation_p99(self) -> float | None:
+        estimates = []
+        for query in (
+            'histogram_quantile(0.99, sum by (le) (rate(prometheus_engine_query_duration_histogram_seconds_bucket{slice="inner_eval"}[5m])))',
+            'histogram_quantile(0.99, sum(rate(prometheus_engine_query_duration_histogram_seconds{slice="inner_eval"}[5m])))',
+        ):
+            try:
+                samples = self.collector.query(query)["result"]
+                if samples:
+                    estimate = float(samples[0]["value"][1])
+                    if math.isfinite(estimate):
+                        estimates.append(estimate)
+            except (ValueError, KeyError, TypeError, IndexError):
+                continue
+        return max(estimates, default=None)
+
     def analyze(self) -> dict:
         """
         Analyze Prometheus metrics and provide recommendations.
@@ -73,11 +89,13 @@ class MetricsAnalyzer:
 
         # Check for GC pause time
         try:
-            gc_pause_result = self.collector.query("histogram_quantile(0.99, sum(rate(go_gc_duration_seconds_bucket[5m])) by (le))")
+            gc_pause_result = self.collector.query('max(go_gc_duration_seconds{quantile=~"1|1[.]0"})')
             if gc_pause_result and gc_pause_result["result"]:
                 for result in gc_pause_result["result"]:
                     gc_pause_value = float(result["value"][1])
-                    metrics['gc_pause_time_p99'] = gc_pause_value
+                    if not math.isfinite(gc_pause_value):
+                        continue
+                    metrics['gc_pause_time_max'] = gc_pause_value
                     if gc_pause_value > 0.1: # 100ms
                         recommendations.append(
                             Recommendation(
@@ -95,33 +113,26 @@ class MetricsAnalyzer:
 
         # Query performance aggregation
         try:
-            # p99 query duration (across all queries)
-            p99_result = self.collector.query(
-                'histogram_quantile(0.99, sum(rate(prometheus_engine_query_duration_seconds_bucket[5m])) by (le))'
-            )
-            if p99_result and p99_result["result"]:
-                for result in p99_result["result"]:
-                    p99_value = float(result["value"][1])
-                    metrics['query_duration_p99'] = p99_value
-                    if p99_value > 2.0:
-                        recommendations.append(
-                            Recommendation(
-                                severity="high",
-                                category="Query Performance",
-                                internal_cause="High p99 PromQL query duration",
-                                impact="Slow queries can impact user experience and Prometheus performance",
-                                recommendation="Investigate slow queries using Prometheus metrics and consider optimizing them.",
-                                reference="https://prometheus.io/docs/prometheus/latest/querying/troubleshooting/",
-                            )
+            p99_value = self._query_evaluation_p99()
+            if p99_value is not None:
+                metrics['query_duration_p99'] = p99_value
+                if p99_value > 2.0:
+                    recommendations.append(
+                        Recommendation(
+                            severity="high",
+                            category="Query Performance",
+                            internal_cause="High p99 PromQL evaluation duration",
+                            impact="Slow queries can impact user experience and Prometheus performance",
+                            recommendation="Investigate slow queries using Prometheus metrics and consider optimizing them.",
+                            reference="https://prometheus.io/docs/prometheus/latest/querying/troubleshooting/",
                         )
-                    break
+                    )
 
-            # Average query duration (approximate, using sum/count)
             avg_sum_result = self.collector.query(
-                'sum(rate(prometheus_engine_query_duration_seconds_sum[5m]))'
+                'sum(rate(prometheus_engine_query_duration_seconds_sum{slice="inner_eval"}[5m]))'
             )
             avg_count_result = self.collector.query(
-                'sum(rate(prometheus_engine_query_duration_seconds_count[5m]))'
+                'sum(rate(prometheus_engine_query_duration_seconds_count{slice="inner_eval"}[5m]))'
             )
             avg_value = None
             if (
