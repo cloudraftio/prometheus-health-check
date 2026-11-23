@@ -36,7 +36,7 @@ Pass the full base URL when Prometheus uses a route prefix (for example, `https:
 ## Features
 
 -   **Comprehensive Health Checks**: The tool runs a range of checks on your Prometheus server's configuration and TSDB status.
--   **Scrape and Rule Health**: Detects when there are no active scrape targets, when targets are down, or when a rule's latest evaluation failed. A server used exclusively for remote-write receiving may intentionally have no scrape targets.
+-   **Scrape and Rule Health**: Uses aggregate `up` samples to detect missing or down scrapes without downloading target labels, and checks for failed rule evaluations. A server used exclusively for remote-write receiving may intentionally have no scrape targets, and a new server may not yet have scrape samples.
 -   **Performance**: Reports the maximum GC pause from the Go runtime summary and p99/average PromQL evaluation duration (not including queue time). These metrics require Prometheus self-metrics to be scraped and enough data to evaluate them. The former `gc_pause_time_p99` JSON field remains present for compatibility; use `gc_pause_time_max` for the current check.
 -   **Detailed Reports**: The health check report can be generated in a user-friendly HTML format or as a JSON object for programmatic use.
 -   **Easy to Extend**: The tool is designed to be easily extensible. You can add your own health checks by creating new Python modules in the `prom_health_check/analyzers` directory.

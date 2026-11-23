@@ -79,9 +79,6 @@ class PrometheusAPICollector:
         """
         return PrometheusBuildInfo(**self._get_data("status/buildinfo"))
 
-    def get_active_targets(self) -> list[dict]:
-        return self._get_data("targets", params={"state": "active"})["activeTargets"]
-
     def get_rule_groups(self) -> list[dict]:
         return self._get_data("rules", params={"exclude_alerts": "true"})["groups"]
 

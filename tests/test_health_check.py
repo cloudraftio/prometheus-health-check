@@ -32,7 +32,6 @@ class TestHealthCheck(unittest.TestCase):
                 "labelValueCountByLabelName": [],
                 "memoryInBytesByLabelName": [],
             },
-            "targets": {"activeTargets": []},
             "rules": {"groups": []},
             "query": {"resultType": "vector", "result": []},
         }
@@ -53,7 +52,7 @@ class TestHealthCheck(unittest.TestCase):
         report = json.loads(result.stdout)
         self.assertIsNone(report["tsdb_status"]["headStats"]["minTime"])
         self.assertIsNone(report["tsdb_status"]["headStats"]["maxTime"])
-        self.assertEqual(report["recommendations"][0]["internal_cause"], "No active scrape targets")
+        self.assertEqual(report["recommendations"][0]["internal_cause"], "No active scrape targets observed")
 
     def test_empty_head_and_utf8_text_render_in_html(self):
         with patch("prom_health_check.cli.main.open", mock_open()) as report_file:
@@ -87,14 +86,17 @@ class TestHealthCheck(unittest.TestCase):
                 self.assertIn(message, " ".join(result.stderr.split()))
 
     def test_snapshot_detects_down_targets_and_failed_rules(self):
-        self.responses["targets"]["activeTargets"] = [
-            {"health": "up"}, {"health": "down"}, {"health": "unknown"},
-        ]
         self.responses["rules"]["groups"] = [
             {"rules": [{"health": "ok"}, {"health": "err"}]},
             {"rules": [{"health": "unknown"}, {"health": "err"}]},
         ]
-        result = self.invoke()
+        def handler(request):
+            if request.url.path.endswith("/query"):
+                value = {"count(up)": "3", "count(up == 0)": "1"}.get(request.url.params["query"])
+                self.responses["query"]["result"] = [{"value": [0, value]}] if value is not None else []
+            return self.handler(request)
+
+        result = self.invoke(handler)
         self.assertEqual(result.exit_code, 0, result.output)
         causes = [entry["internal_cause"] for entry in json.loads(result.stdout)["recommendations"]]
         self.assertEqual(causes, ["Scrape failures on 1 of 3 active targets", "Rule evaluation failures (2)"])

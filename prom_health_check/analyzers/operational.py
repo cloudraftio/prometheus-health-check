@@ -6,24 +6,28 @@ class OperationalAnalyzer:
     def __init__(self, collector: PrometheusAPICollector):
         self.collector = collector
 
+    def _query_count(self, query: str) -> int:
+        result = self.collector.query(query)["result"]
+        return int(result[0]["value"][1]) if result else 0
+
     def analyze(self) -> list[Recommendation]:
         recommendations = []
-        targets = self.collector.get_active_targets()
-        down_count = sum(target["health"] == "down" for target in targets)
-        if not targets:
+        target_count = self._query_count("count(up)")
+        down_count = self._query_count("count(up == 0)") if target_count else 0
+        if not target_count:
             recommendations.append(Recommendation(
                 severity="low",
                 category="Scraping",
-                internal_cause="No active scrape targets",
-                impact="Prometheus is not scraping any targets",
-                recommendation="If scraping is expected, check scrape configuration, service discovery, and relabeling.",
+                internal_cause="No active scrape targets observed",
+                impact="There are no recent up samples to assess scrape health",
+                recommendation="If scraping is expected and Prometheus has had time to scrape, check scrape configuration, service discovery, and relabeling.",
                 reference="https://prometheus.io/docs/prometheus/latest/configuration/configuration/#scrape_config",
             ))
         elif down_count:
             recommendations.append(Recommendation(
                 severity="high",
                 category="Scraping",
-                internal_cause=f"Scrape failures on {down_count} of {len(targets)} active targets",
+                internal_cause=f"Scrape failures on {down_count} of {target_count} active targets",
                 impact="Missing or stale metrics for affected targets",
                 recommendation="Review the last scrape errors on the Prometheus Targets page.",
                 reference="https://prometheus.io/docs/prometheus/latest/querying/api/#targets",
