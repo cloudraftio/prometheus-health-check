@@ -151,3 +151,22 @@ class TestHealthCheck(unittest.TestCase):
         causes = [entry["internal_cause"] for entry in report["recommendations"]]
         self.assertIn("High GC pause time", causes)
         self.assertIn("High p99 PromQL evaluation duration", causes)
+
+    def test_query_p99_falls_back_to_native_histogram(self):
+        queries = []
+        native_query = (
+            'histogram_quantile(0.99, sum(rate('
+            'prometheus_engine_query_duration_histogram_seconds{slice="inner_eval"}[5m])))'
+        )
+
+        def handler(request):
+            if request.url.path.endswith("/query"):
+                query = request.url.params["query"]
+                queries.append(query)
+                self.responses["query"]["result"] = [{"value": [0, "3.5"]}] if query == native_query else []
+            return self.handler(request)
+
+        result = self.invoke(handler)
+        self.assertEqual(result.exit_code, 0, result.output)
+        self.assertIn("_bucket", queries[queries.index(native_query) - 1])
+        self.assertEqual(json.loads(result.stdout)["query_duration_p99"], 3.5)

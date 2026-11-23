@@ -100,6 +100,10 @@ class MetricsAnalyzer:
             p99_result = self.collector.query(
                 'histogram_quantile(0.99, sum by (le) (rate(prometheus_engine_query_duration_histogram_seconds_bucket{slice="inner_eval"}[5m])))'
             )
+            if not p99_result or not p99_result["result"]:
+                p99_result = self.collector.query(
+                    'histogram_quantile(0.99, sum(rate(prometheus_engine_query_duration_histogram_seconds{slice="inner_eval"}[5m])))'
+                )
             if p99_result and p99_result["result"]:
                 for result in p99_result["result"]:
                     p99_value = float(result["value"][1])
