@@ -173,3 +173,23 @@ class TestHealthCheck(unittest.TestCase):
         self.assertEqual(result.exit_code, 0, result.output)
         self.assertIn("_bucket", queries[queries.index(native_query) - 1])
         self.assertEqual(json.loads(result.stdout)["query_duration_p99"], 3.5)
+
+    def test_query_p99_uses_maximum_finite_histogram_estimate(self):
+        for classic, native, expected in [("1", "3.5", 3.5), ("4", "1", 4.0), ("NaN", "2.5", 2.5)]:
+            with self.subTest(classic=classic, native=native):
+                def handler(request):
+                    if request.url.path.endswith("/query"):
+                        query = request.url.params["query"]
+                        samples = []
+                        if query.startswith("histogram_quantile("):
+                            value = classic if "_bucket" in query else native
+                            samples = [{"value": [0, value]}]
+                        self.responses["query"]["result"] = samples
+                    return self.handler(request)
+
+                result = self.invoke(handler)
+                self.assertEqual(result.exit_code, 0, result.output)
+                report = json.loads(result.stdout)
+                self.assertEqual(report["query_duration_p99"], expected)
+                causes = [entry["internal_cause"] for entry in report["recommendations"]]
+                self.assertEqual(causes.count("High p99 PromQL evaluation duration"), 1)

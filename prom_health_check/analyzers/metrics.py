@@ -16,6 +16,22 @@ class MetricsAnalyzer:
         """
         self.collector = collector
 
+    def _query_evaluation_p99(self) -> float | None:
+        estimates = []
+        for query in (
+            'histogram_quantile(0.99, sum by (le) (rate(prometheus_engine_query_duration_histogram_seconds_bucket{slice="inner_eval"}[5m])))',
+            'histogram_quantile(0.99, sum(rate(prometheus_engine_query_duration_histogram_seconds{slice="inner_eval"}[5m])))',
+        ):
+            try:
+                samples = self.collector.query(query)["result"]
+                if samples:
+                    estimate = float(samples[0]["value"][1])
+                    if math.isfinite(estimate):
+                        estimates.append(estimate)
+            except (ValueError, KeyError, TypeError, IndexError):
+                continue
+        return max(estimates, default=None)
+
     def analyze(self) -> dict:
         """
         Analyze Prometheus metrics and provide recommendations.
@@ -97,31 +113,20 @@ class MetricsAnalyzer:
 
         # Query performance aggregation
         try:
-            p99_result = self.collector.query(
-                'histogram_quantile(0.99, sum by (le) (rate(prometheus_engine_query_duration_histogram_seconds_bucket{slice="inner_eval"}[5m])))'
-            )
-            if not p99_result or not p99_result["result"]:
-                p99_result = self.collector.query(
-                    'histogram_quantile(0.99, sum(rate(prometheus_engine_query_duration_histogram_seconds{slice="inner_eval"}[5m])))'
-                )
-            if p99_result and p99_result["result"]:
-                for result in p99_result["result"]:
-                    p99_value = float(result["value"][1])
-                    if not math.isfinite(p99_value):
-                        continue
-                    metrics['query_duration_p99'] = p99_value
-                    if p99_value > 2.0:
-                        recommendations.append(
-                            Recommendation(
-                                severity="high",
-                                category="Query Performance",
-                                internal_cause="High p99 PromQL evaluation duration",
-                                impact="Slow queries can impact user experience and Prometheus performance",
-                                recommendation="Investigate slow queries using Prometheus metrics and consider optimizing them.",
-                                reference="https://prometheus.io/docs/prometheus/latest/querying/troubleshooting/",
-                            )
+            p99_value = self._query_evaluation_p99()
+            if p99_value is not None:
+                metrics['query_duration_p99'] = p99_value
+                if p99_value > 2.0:
+                    recommendations.append(
+                        Recommendation(
+                            severity="high",
+                            category="Query Performance",
+                            internal_cause="High p99 PromQL evaluation duration",
+                            impact="Slow queries can impact user experience and Prometheus performance",
+                            recommendation="Investigate slow queries using Prometheus metrics and consider optimizing them.",
+                            reference="https://prometheus.io/docs/prometheus/latest/querying/troubleshooting/",
                         )
-                    break
+                    )
 
             avg_sum_result = self.collector.query(
                 'sum(rate(prometheus_engine_query_duration_seconds_sum{slice="inner_eval"}[5m]))'
