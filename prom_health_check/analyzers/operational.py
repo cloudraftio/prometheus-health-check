@@ -1,5 +1,9 @@
+import logging
+
 from prom_health_check.collectors.prom_api import PrometheusAPICollector
 from prom_health_check.models.prometheus import Recommendation
+
+logger = logging.getLogger(__name__)
 
 
 class OperationalAnalyzer:
@@ -11,6 +15,15 @@ class OperationalAnalyzer:
         return int(result[0]["value"][1]) if result else 0
 
     def analyze(self) -> list[Recommendation]:
+        recommendations = []
+        for check, name in [(self._check_scrapes, "scrape health"), (self._check_rules, "rule health")]:
+            try:
+                recommendations.extend(check())
+            except (ValueError, KeyError, TypeError, IndexError):
+                logger.warning("Could not check %s: the Prometheus API did not return usable data.", name)
+        return recommendations
+
+    def _check_scrapes(self) -> list[Recommendation]:
         recommendations = []
         target_count = self._query_count("count(up)")
         down_count = self._query_count("count(up == 0)") if target_count else 0
@@ -32,7 +45,10 @@ class OperationalAnalyzer:
                 recommendation="Review the last scrape errors on the Prometheus Targets page.",
                 reference="https://prometheus.io/docs/prometheus/latest/querying/api/#targets",
             ))
+        return recommendations
 
+    def _check_rules(self) -> list[Recommendation]:
+        recommendations = []
         failed_rules = sum(
             rule["health"] == "err"
             for group in self.collector.get_rule_groups()

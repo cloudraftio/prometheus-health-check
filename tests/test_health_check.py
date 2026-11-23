@@ -101,6 +101,25 @@ class TestHealthCheck(unittest.TestCase):
         causes = [entry["internal_cause"] for entry in json.loads(result.stdout)["recommendations"]]
         self.assertEqual(causes, ["Scrape failures on 1 of 3 active targets", "Rule evaluation failures (2)"])
 
+    def test_unavailable_operational_check_does_not_hide_other_findings(self):
+        self.responses["rules"]["groups"] = [{"rules": [{"health": "err"}]}]
+        for blocked_endpoint, skipped, cause in [
+            ("/query", "scrape health", "Rule evaluation failures (1)"),
+            ("/rules", "rule health", "No active scrape targets observed"),
+        ]:
+            with self.subTest(blocked_endpoint=blocked_endpoint):
+                def handler(request):
+                    if request.url.path.endswith(blocked_endpoint):
+                        return httpx.Response(403)
+                    return self.handler(request)
+
+                with self.assertLogs("prom_health_check.analyzers.operational", level="WARNING") as logs:
+                    result = self.invoke(handler)
+                self.assertEqual(result.exit_code, 0, result.output)
+                self.assertIn(f"Could not check {skipped}", logs.output[0])
+                causes = [entry["internal_cause"] for entry in json.loads(result.stdout)["recommendations"]]
+                self.assertEqual(causes, [cause])
+
     def test_timeout_identifies_endpoint(self):
         def timeout(request):
             raise httpx.ReadTimeout("timed out", request=request)
