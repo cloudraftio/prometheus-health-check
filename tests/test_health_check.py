@@ -92,14 +92,17 @@ class TestHealthCheck(unittest.TestCase):
         ]
         def handler(request):
             if request.url.path.endswith("/query"):
-                value = {"count(up)": "3", "count(up == 0)": "1"}.get(request.url.params["query"])
+                value = {
+                    "count(last_over_time(up[1h]))": "3",
+                    "count(last_over_time(up[1h]) == 0)": "1",
+                }.get(request.url.params["query"])
                 self.responses["query"]["result"] = [{"value": [0, value]}] if value is not None else []
             return self.handler(request)
 
         result = self.invoke(handler)
         self.assertEqual(result.exit_code, 0, result.output)
         causes = [entry["internal_cause"] for entry in json.loads(result.stdout)["recommendations"]]
-        self.assertEqual(causes, ["Scrape failures on 1 of 3 active targets", "Rule evaluation failures (2)"])
+        self.assertEqual(causes, ["Scrape failures on 1 of 3 observed targets", "Rule evaluation failures (2)"])
 
     def test_unavailable_operational_check_does_not_hide_other_findings(self):
         self.responses["rules"]["groups"] = [{"rules": [{"health": "err"}]}]

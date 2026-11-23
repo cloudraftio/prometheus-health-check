@@ -25,14 +25,15 @@ class OperationalAnalyzer:
 
     def _check_scrapes(self) -> list[Recommendation]:
         recommendations = []
-        target_count = self._query_count("count(up)")
-        down_count = self._query_count("count(up == 0)") if target_count else 0
+        recent_up = "last_over_time(up[1h])"
+        target_count = self._query_count(f"count({recent_up})")
+        down_count = self._query_count(f"count({recent_up} == 0)") if target_count else 0
         if not target_count:
             recommendations.append(Recommendation(
                 severity="low",
                 category="Scraping",
                 internal_cause="No active scrape targets observed",
-                impact="There are no recent up samples to assess scrape health",
+                impact="There are no up samples in the last hour to assess scrape health",
                 recommendation="If scraping is expected and Prometheus has had time to scrape, check scrape configuration, service discovery, and relabeling.",
                 reference="https://prometheus.io/docs/prometheus/latest/configuration/configuration/#scrape_config",
             ))
@@ -40,7 +41,7 @@ class OperationalAnalyzer:
             recommendations.append(Recommendation(
                 severity="high",
                 category="Scraping",
-                internal_cause=f"Scrape failures on {down_count} of {target_count} active targets",
+                internal_cause=f"Scrape failures on {down_count} of {target_count} observed targets",
                 impact="Missing or stale metrics for affected targets",
                 recommendation="Review the last scrape errors on the Prometheus Targets page.",
                 reference="https://prometheus.io/docs/prometheus/latest/querying/api/#targets",
