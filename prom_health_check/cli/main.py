@@ -36,21 +36,23 @@ def run(
     """
     Perform a health check on a Prometheus server.
     """
-    err_console.print(f"Running health check on {prom_url} with output format {output_format}")
+    err_console.print(f"Running health check with output format {output_format}", markup=False)
 
     from prom_health_check.collectors.prom_api import PrometheusAPICollector
     from prom_health_check.analyzers.tsdb import TsdbAnalyzer
     from prom_health_check.analyzers.config import ConfigAnalyzer
     from prom_health_check.analyzers.metrics import MetricsAnalyzer
+    from prom_health_check.analyzers.operational import OperationalAnalyzer
     from prom_health_check.renderers.json import JsonRenderer
     from prom_health_check.renderers.html import HtmlRenderer
     from prom_health_check.models.prometheus import HealthReport
 
-    collector = PrometheusAPICollector(prom_url)
-
     try:
+        collector = PrometheusAPICollector(prom_url)
         config = collector.get_config()
         flags = collector.get_flags()
+        if flags.flags.get("agent") == "true":
+            raise ValueError("Prometheus Agent mode does not expose TSDB status or PromQL queries. Use a Prometheus server URL for this health check.")
         buildinfo = collector.get_buildinfo()
         tsdb_status = collector.get_tsdb_status()
 
@@ -62,6 +64,7 @@ def run(
         recommendations = (
             tsdb_analyzer.analyze()
             + config_analyzer.analyze()
+            + OperationalAnalyzer(collector).analyze()
             + metrics_analysis_result["recommendations"]
         )
 
@@ -96,12 +99,12 @@ def run(
             print(renderer.render())
         else:
             renderer = HtmlRenderer(report)
-            with open("prometheus_health_report.html", "w") as f:
+            with open("prometheus_health_report.html", "w", encoding="utf-8") as f:
                 f.write(renderer.render())
             err_console.print("Health check report saved to prometheus_health_report.html")
 
     except Exception as e:
-        err_console.print(f"Error fetching data from Prometheus: {e}")
+        err_console.print(f"Health check failed: {e}", markup=False)
         raise typer.Exit(code=1)
 
 def main() -> None:

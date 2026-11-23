@@ -22,6 +22,8 @@ def human_readable_number(num):
         return str(num)
 
 def timestamp_to_datetime(ts):
+    if ts is None:
+        return "N/A"
     return datetime.datetime.fromtimestamp(ts / 1000).strftime('%Y-%m-%d %H:%M:%S')
 
 def human_readable_bytes(num, suffix="B"):
@@ -56,7 +58,7 @@ class HtmlRenderer:
         """
         self.report = report
         template_dir = os.path.join(os.path.dirname(__file__), "templates")
-        self.env = Environment(loader=FileSystemLoader(template_dir))
+        self.env = Environment(loader=FileSystemLoader(template_dir), autoescape=True)
         self.env.filters['timestamp_to_datetime'] = timestamp_to_datetime
         self.env.filters['human_readable_bytes'] = human_readable_bytes
         self.env.filters['human_readable_number'] = human_readable_number

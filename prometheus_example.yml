@@ -54,9 +54,9 @@ scrape_configs:
         replacement: $1:$2
         target_label: __address__
 
-# Storage configuration
+# Storage configuration (set the data directory with --storage.tsdb.path).
 storage:
   tsdb:
-    path: /var/lib/prometheus
-    retention.time: 15d
-    retention.size: 50GB
+    retention:
+      time: 15d
+      size: 50GB

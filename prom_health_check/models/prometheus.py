@@ -52,6 +52,7 @@ class HealthReport(BaseModel):
     prometheus_build_info: Optional[PrometheusBuildInfo] = None
     series_churn_rate: Optional[float] = None
     gc_pause_time_p99: Optional[float] = None
+    gc_pause_time_max: Optional[float] = None
     failed_compactions: Optional[int] = None
     query_duration_p99: Optional[float] = None
     query_duration_avg: Optional[float] = None

@@ -1,5 +1,9 @@
+import re
+
 from prom_health_check.models.prometheus import PrometheusConfig, Recommendation
 from ruamel.yaml import YAML
+
+DURATION_SECONDS = {"y": 31536000, "w": 604800, "d": 86400, "h": 3600, "m": 60, "s": 1, "ms": 0.001}
 
 
 class ConfigAnalyzer:
@@ -74,7 +78,10 @@ class ConfigAnalyzer:
         # Analyze global scrape interval
         global_config = self.config.get("global", {})
         scrape_interval = global_config.get("scrape_interval", "15s")
-        if scrape_interval.endswith("s") and int(scrape_interval[:-1]) < 15:
+        parts = re.findall(r"(\d+)(ms|[ywdhms])", scrape_interval)
+        if "".join(value + unit for value, unit in parts) == scrape_interval and parts and sum(
+            int(value) * DURATION_SECONDS[unit] for value, unit in parts
+        ) < 15:
             recommendations.append(
                 Recommendation(
                     severity="low",
