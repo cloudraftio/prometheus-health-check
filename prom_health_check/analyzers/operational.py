@@ -43,7 +43,10 @@ class OperationalAnalyzer:
                 category="Scraping",
                 internal_cause=f"Scrape failures on {down_count} of {target_count} observed targets",
                 impact="Missing or stale metrics for affected targets",
-                recommendation="Review the last scrape errors on the Prometheus Targets page.",
+                recommendation=(
+                    "If this server receives remote-written up samples, some failures may be upstream. "
+                    "Check this server's own Targets page to confirm local scrape failures."
+                ),
                 reference="https://prometheus.io/docs/prometheus/latest/querying/api/#targets",
             ))
         return recommendations

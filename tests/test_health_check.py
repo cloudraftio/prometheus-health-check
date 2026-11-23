@@ -101,8 +101,11 @@ class TestHealthCheck(unittest.TestCase):
 
         result = self.invoke(handler)
         self.assertEqual(result.exit_code, 0, result.output)
-        causes = [entry["internal_cause"] for entry in json.loads(result.stdout)["recommendations"]]
+        recommendations = json.loads(result.stdout)["recommendations"]
+        causes = [entry["internal_cause"] for entry in recommendations]
         self.assertEqual(causes, ["Scrape failures on 1 of 3 observed targets", "Rule evaluation failures (2)"])
+        self.assertIn("remote-written up samples", recommendations[0]["recommendation"])
+        self.assertIn("own Targets page", recommendations[0]["recommendation"])
 
     def test_unavailable_operational_check_does_not_hide_other_findings(self):
         self.responses["rules"]["groups"] = [{"rules": [{"health": "err"}]}]
